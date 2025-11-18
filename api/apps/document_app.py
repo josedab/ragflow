@@ -497,9 +497,8 @@ def rename():
 # @login_required
 def get(doc_id):
     try:
-        e, doc = DocumentService.get_by_id(doc_id)
-        if not e:
-            return get_data_error_result(message="Document not found!")
+        # Use new standardized exception-based error handling
+        doc = DocumentService.get_by_id_or_raise(doc_id)
 
         b, n = File2DocumentService.get_storage_address(doc_id=doc_id)
         response = flask.make_response(settings.STORAGE_IMPL.get(b, n))
@@ -514,6 +513,10 @@ def get(doc_id):
                 content_type = CONTENT_TYPE_MAP.get(ext, f"application/{ext}")
             response.headers.set("Content-Type", content_type)
         return response
+    except DocumentService.NotFoundError as e:
+        return get_json_result(code=RetCode.NOT_FOUND, message=str(e))
+    except DocumentService.ValidationError as e:
+        return get_json_result(code=RetCode.ARGUMENT_ERROR, message=str(e))
     except Exception as e:
         return server_error_response(e)
 

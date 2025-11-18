@@ -19,7 +19,7 @@ from peewee import fn, JOIN
 
 from api.db import TenantPermission
 from api.db.db_models import DB, Document, Knowledgebase, User, UserTenant, UserCanvas
-from api.db.services.common_service import CommonService
+from api.db.services.base_service import BaseService
 from common.time_utils import current_timestamp, datetime_format
 from api.db.services import duplicate_name
 from api.db.services.user_service import TenantService
@@ -28,10 +28,10 @@ from common.constants import StatusEnum, RetCode
 from api.constants import DATASET_NAME_LIMIT
 from api.utils.api_utils import get_parser_config
 
-class KnowledgebaseService(CommonService):
+class KnowledgebaseService(BaseService[Knowledgebase]):
     """Service class for managing knowledge base operations.
 
-    This class extends CommonService to provide specialized functionality for knowledge base
+    This class extends BaseService to provide specialized functionality for knowledge base
     management, including document parsing status tracking, access control, and configuration
     management. It handles operations such as listing, creating, updating, and deleting
     knowledge bases, as well as managing their associated documents and permissions.
@@ -46,6 +46,34 @@ class KnowledgebaseService(CommonService):
         model: The Knowledgebase model class for database operations.
     """
     model = Knowledgebase
+
+    @classmethod
+    def _validate_create(cls, data: dict):
+        """Validate data before creating a knowledge base."""
+        if not data.get('name'):
+            raise cls.ValidationError("Knowledge base name is required")
+        if not data.get('tenant_id'):
+            raise cls.ValidationError("Tenant ID is required")
+        # Check name length
+        name = data.get('name', '').strip()
+        if len(name.encode("utf-8")) > DATASET_NAME_LIMIT:
+            raise cls.ValidationError(
+                f"Dataset name length is {len(name)} which is larger than {DATASET_NAME_LIMIT}"
+            )
+
+    @classmethod
+    def _validate_update(cls, data: dict):
+        """Validate data before updating a knowledge base."""
+        # Don't allow changing tenant_id after creation
+        if 'tenant_id' in data:
+            raise cls.ValidationError("Cannot change tenant ID after knowledge base creation")
+        # Check name length if being updated
+        if 'name' in data:
+            name = data.get('name', '').strip()
+            if len(name.encode("utf-8")) > DATASET_NAME_LIMIT:
+                raise cls.ValidationError(
+                    f"Dataset name length is {len(name)} which is larger than {DATASET_NAME_LIMIT}"
+                )
 
     @classmethod
     @DB.connection_context()

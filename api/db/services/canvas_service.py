@@ -21,25 +21,47 @@ from agent.canvas import Canvas
 from api.db import CanvasCategory, TenantPermission
 from api.db.db_models import DB, CanvasTemplate, User, UserCanvas, API4Conversation
 from api.db.services.api_service import API4ConversationService
-from api.db.services.common_service import CommonService
+from api.db.services.base_service import BaseService
 from common.misc_utils import get_uuid
 from api.utils.api_utils import get_data_openai
 import tiktoken
 from peewee import fn
 
 
-class CanvasTemplateService(CommonService):
-    model = CanvasTemplate
-
-class DataFlowTemplateService(CommonService):
-    """
-    Alias of CanvasTemplateService
-    """
+class CanvasTemplateService(BaseService[CanvasTemplate]):
+    """Service class for managing canvas templates."""
     model = CanvasTemplate
 
 
-class UserCanvasService(CommonService):
+class DataFlowTemplateService(BaseService[CanvasTemplate]):
+    """
+    Alias of CanvasTemplateService for managing dataflow templates.
+    """
+    model = CanvasTemplate
+
+
+class UserCanvasService(BaseService[UserCanvas]):
+    """Service class for managing user canvas (agents).
+
+    This class extends BaseService to provide functionality for agent management,
+    including creating, updating, and retrieving agent configurations.
+    """
     model = UserCanvas
+
+    @classmethod
+    def _validate_create(cls, data: dict):
+        """Validate data before creating a canvas."""
+        if not data.get('title'):
+            raise cls.ValidationError("Canvas title is required")
+        if not data.get('user_id'):
+            raise cls.ValidationError("User ID is required")
+
+    @classmethod
+    def _validate_update(cls, data: dict):
+        """Validate data before updating a canvas."""
+        # Don't allow changing user_id
+        if 'user_id' in data:
+            raise cls.ValidationError("Cannot change user ID after canvas creation")
 
     @classmethod
     @DB.connection_context()

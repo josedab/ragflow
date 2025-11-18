@@ -27,7 +27,7 @@ from peewee import fn
 from agentic_reasoning import DeepResearcher
 from common.constants import LLMType, ParserType, StatusEnum
 from api.db.db_models import DB, Dialog
-from api.db.services.common_service import CommonService
+from api.db.services.base_service import BaseService
 from api.db.services.document_service import DocumentService
 from api.db.services.knowledgebase_service import KnowledgebaseService
 from api.db.services.langfuse_service import TenantLangfuseService
@@ -46,8 +46,28 @@ from common.string_utils import remove_redundant_spaces
 from common import settings
 
 
-class DialogService(CommonService):
+class DialogService(BaseService[Dialog]):
+    """Service class for managing chat dialogs.
+
+    This class extends BaseService to provide functionality for dialog management,
+    including creating, updating, and retrieving chat configurations.
+    """
     model = Dialog
+
+    @classmethod
+    def _validate_create(cls, data: dict):
+        """Validate data before creating a dialog."""
+        if not data.get('name'):
+            raise cls.ValidationError("Dialog name is required")
+        if not data.get('tenant_id'):
+            raise cls.ValidationError("Tenant ID is required")
+
+    @classmethod
+    def _validate_update(cls, data: dict):
+        """Validate data before updating a dialog."""
+        # Don't allow changing tenant_id
+        if 'tenant_id' in data:
+            raise cls.ValidationError("Cannot change tenant ID after dialog creation")
 
     @classmethod
     def save(cls, **kwargs):

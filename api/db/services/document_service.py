@@ -31,7 +31,7 @@ from api.db import PIPELINE_SPECIAL_PROGRESS_FREEZE_TASK_TYPES, FileType, UserTe
 from api.db.db_models import DB, Document, Knowledgebase, Task, Tenant, UserTenant, File2Document, File, UserCanvas, \
     User
 from api.db.db_utils import bulk_insert_into_db
-from api.db.services.common_service import CommonService
+from api.db.services.base_service import BaseService
 from api.db.services.knowledgebase_service import KnowledgebaseService
 from common.misc_utils import get_uuid
 from common.time_utils import current_timestamp, get_format_time
@@ -41,8 +41,29 @@ from rag.utils.redis_conn import REDIS_CONN
 from rag.utils.doc_store_conn import OrderByExpr
 from common import settings
 
-class DocumentService(CommonService):
+class DocumentService(BaseService[Document]):
+    """Service for managing documents in RAGFlow.
+
+    This service handles document CRUD operations, parsing, chunking,
+    and knowledge base integration.
+    """
+
     model = Document
+
+    @classmethod
+    def _validate_create(cls, data: dict):
+        """Validate data before creating a document."""
+        if not data.get('name'):
+            raise cls.ValidationError("Document name is required")
+        if not data.get('kb_id'):
+            raise cls.ValidationError("Knowledge base ID is required")
+
+    @classmethod
+    def _validate_update(cls, data: dict):
+        """Validate data before updating a document."""
+        # Don't allow changing kb_id after creation
+        if 'kb_id' in data:
+            raise cls.ValidationError("Cannot change knowledge base ID after document creation")
 
     @classmethod
     def get_cls_model_fields(cls):

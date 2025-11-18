@@ -23,23 +23,36 @@ from werkzeug.security import generate_password_hash, check_password_hash
 from api.db import UserTenantRole
 from api.db.db_models import DB, UserTenant
 from api.db.db_models import User, Tenant
-from api.db.services.common_service import CommonService
+from api.db.services.base_service import BaseService
 from common.misc_utils import get_uuid
 from common.time_utils import current_timestamp, datetime_format
 from common.constants import StatusEnum
 from common import settings
 
 
-class UserService(CommonService):
+class UserService(BaseService[User]):
     """Service class for managing user-related database operations.
 
-    This class extends CommonService to provide specialized functionality for user management,
+    This class extends BaseService to provide specialized functionality for user management,
     including authentication, user creation, updates, and deletions.
 
     Attributes:
         model: The User model class for database operations.
     """
     model = User
+
+    @classmethod
+    def _validate_create(cls, data: dict):
+        """Validate data before creating a user."""
+        if not data.get('email'):
+            raise cls.ValidationError("Email is required")
+        if not data.get('password'):
+            raise cls.ValidationError("Password is required")
+
+    @classmethod
+    def _validate_update(cls, data: dict):
+        """Validate data before updating a user."""
+        pass  # Allow updates without special validation
 
     @classmethod
     @DB.connection_context()
@@ -165,16 +178,22 @@ class UserService(CommonService):
         return list(users)
 
 
-class TenantService(CommonService):
+class TenantService(BaseService[Tenant]):
     """Service class for managing tenant-related database operations.
 
-    This class extends CommonService to provide functionality for tenant management,
+    This class extends BaseService to provide functionality for tenant management,
     including tenant information retrieval and credit management.
 
     Attributes:
         model: The Tenant model class for database operations.
     """
     model = Tenant
+
+    @classmethod
+    def _validate_create(cls, data: dict):
+        """Validate data before creating a tenant."""
+        if not data.get('name'):
+            raise cls.ValidationError("Tenant name is required")
 
     @classmethod
     @DB.connection_context()
@@ -224,16 +243,24 @@ class TenantService(CommonService):
         return int(hash_obj.hexdigest(), 16)%len(settings.MINIO)
 
 
-class UserTenantService(CommonService):
+class UserTenantService(BaseService[UserTenant]):
     """Service class for managing user-tenant relationship operations.
 
-    This class extends CommonService to handle the many-to-many relationship
+    This class extends BaseService to handle the many-to-many relationship
     between users and tenants, managing user roles and tenant memberships.
 
     Attributes:
         model: The UserTenant model class for database operations.
     """
     model = UserTenant
+
+    @classmethod
+    def _validate_create(cls, data: dict):
+        """Validate data before creating a user-tenant relationship."""
+        if not data.get('user_id'):
+            raise cls.ValidationError("User ID is required")
+        if not data.get('tenant_id'):
+            raise cls.ValidationError("Tenant ID is required")
 
     @classmethod
     @DB.connection_context()
