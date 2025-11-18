@@ -36,6 +36,7 @@ from zhipuai import ZhipuAI
 from rag.llm import FACTORY_DEFAULT_BASE_URL, LITELLM_PROVIDER_PREFIX, SupportedLiteLLMProvider
 from rag.nlp import is_chinese, is_english
 from common.token_utils import num_tokens_from_string, total_token_count_from_response
+from common.metrics import Metrics
 
 
 # Error message constants
@@ -319,6 +320,9 @@ class Base(ABC):
         assert False, "Shouldn't be here."
 
     def chat(self, system, history, gen_conf={}, **kwargs):
+        start_time = time.time()
+        metrics = Metrics.get_instance()
+
         if system and history and history[0].get("role") != "system":
             history.insert(0, {"role": "system", "content": system})
         gen_conf = self._clean_conf(gen_conf)
@@ -326,10 +330,29 @@ class Base(ABC):
         # Implement exponential backoff retry strategy
         for attempt in range(self.max_retries + 1):
             try:
-                return self._chat(history, gen_conf, **kwargs)
+                result = self._chat(history, gen_conf, **kwargs)
+
+                # Record LLM chat duration
+                duration = time.time() - start_time
+                metrics.histogram(
+                    'llm_duration_seconds',
+                    duration,
+                    labels={'model': self.model_name, 'operation': 'chat'},
+                    description='LLM inference duration in seconds'
+                )
+
+                return result
             except Exception as e:
                 e = self._exceptions(e, attempt)
                 if e:
+                    # Record failed attempt duration
+                    duration = time.time() - start_time
+                    metrics.histogram(
+                        'llm_duration_seconds',
+                        duration,
+                        labels={'model': self.model_name, 'operation': 'chat', 'status': 'error'},
+                        description='LLM inference duration in seconds'
+                    )
                     return e, 0
         assert False, "Shouldn't be here."
 

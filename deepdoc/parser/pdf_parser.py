@@ -36,6 +36,7 @@ from pypdf import PdfReader as pdf2_read
 
 from common.file_utils import get_project_base_directory
 from common.misc_utils import pip_install_torch
+from common.metrics import Metrics
 from deepdoc.vision import OCR, AscendLayoutRecognizer, LayoutRecognizer, Recognizer, TableStructureRecognizer
 from rag.app.picture import vision_llm_chunk as picture_vision_llm_chunk
 from rag.nlp import rag_tokenizer
@@ -1138,6 +1139,9 @@ class RAGFlowPdfParser:
             self.__images__(fnm, zoomin * 3, page_from, page_to, callback)
 
     def __call__(self, fnm, need_image=True, zoomin=3, return_html=False):
+        start_time = timer()
+        metrics = Metrics.get_instance()
+
         self.__images__(fnm, zoomin)
         self._layouts_rec(zoomin)
         self._table_transformer_job(zoomin)
@@ -1145,9 +1149,22 @@ class RAGFlowPdfParser:
         self._concat_downward()
         self._filter_forpages()
         tbls = self._extract_table_figure(need_image, zoomin, return_html, False)
+
+        # Record PDF parsing duration
+        duration = timer() - start_time
+        metrics.histogram(
+            'pdf_parse_duration_seconds',
+            duration,
+            labels={'parser': 'deepdoc'},
+            description='PDF parsing duration in seconds'
+        )
+
         return self.__filterout_scraps(deepcopy(self.boxes), zoomin), tbls
 
     def parse_into_bboxes(self, fnm, callback=None, zoomin=3):
+        overall_start = timer()
+        metrics = Metrics.get_instance()
+
         start = timer()
         self.__images__(fnm, zoomin, callback=callback)
         if callback:
@@ -1229,6 +1246,16 @@ class RAGFlowPdfParser:
         insert_table_figures(figs, "figure")
         if callback:
             callback(1, "Structured ({:.2f}s)".format(timer() - start))
+
+        # Record overall PDF parsing duration
+        overall_duration = timer() - overall_start
+        metrics.histogram(
+            'pdf_parse_duration_seconds',
+            overall_duration,
+            labels={'parser': 'deepdoc', 'method': 'parse_into_bboxes'},
+            description='PDF parsing duration in seconds'
+        )
+
         return deepcopy(self.boxes)
 
     @staticmethod

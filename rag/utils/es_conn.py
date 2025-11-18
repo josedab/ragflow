@@ -27,6 +27,7 @@ from elastic_transport import ConnectionTimeout
 from common.decorator import singleton
 from common.file_utils import get_project_base_directory
 from common.misc_utils import convert_bytes
+from common.metrics import Metrics
 from rag.utils.doc_store_conn import DocStoreConnection, MatchExpr, OrderByExpr, MatchTextExpr, MatchDenseExpr, \
     FusionExpr
 from rag.nlp import is_english, rag_tokenizer
@@ -155,6 +156,9 @@ class ESConnection(DocStoreConnection):
         """
         Refers to https://www.elastic.co/guide/en/elasticsearch/reference/current/query-dsl.html
         """
+        start_time = time.time()
+        metrics = Metrics.get_instance()
+
         if isinstance(indexNames, str):
             indexNames = indexNames.split(",")
         assert isinstance(indexNames, list) and len(indexNames) > 0
@@ -258,6 +262,16 @@ class ESConnection(DocStoreConnection):
                 if str(res.get("timed_out", "")).lower() == "true":
                     raise Exception("Es Timeout.")
                 logger.debug(f"ESConnection.search {str(indexNames)} res: " + str(res))
+
+                # Record search duration
+                duration = time.time() - start_time
+                metrics.histogram(
+                    'search_duration_seconds',
+                    duration,
+                    labels={'engine': 'elasticsearch'},
+                    description='Search query duration in seconds'
+                )
+
                 return res
             except ConnectionTimeout:
                 logger.exception("ES request timeout")

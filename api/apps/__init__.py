@@ -16,15 +16,17 @@
 import os
 import sys
 import logging
+import time
 from importlib.util import module_from_spec, spec_from_file_location
 from pathlib import Path
-from flask import Blueprint, Flask
+from flask import Blueprint, Flask, request, g
 from werkzeug.wrappers.request import Request
 from flask_cors import CORS
 from flasgger import Swagger
 from itsdangerous.url_safe import URLSafeTimedSerializer as Serializer
 
 from common.constants import StatusEnum
+from common.metrics import Metrics
 from api.db.db_models import close_connection
 from api.db.services import UserService
 from api.utils.json_encode import CustomJSONEncoder
@@ -94,6 +96,43 @@ login_manager = LoginManager()
 login_manager.init_app(app)
 
 commands.register_commands(app)
+
+
+# Request timing middleware for performance monitoring
+@app.before_request
+def before_request_timing():
+    """Start timing the request."""
+    g.start_time = time.time()
+
+
+@app.after_request
+def after_request_timing(response):
+    """Record request duration metrics."""
+    if hasattr(g, 'start_time'):
+        duration = time.time() - g.start_time
+        metrics = Metrics.get_instance()
+
+        # Get endpoint info for labeling
+        endpoint = request.endpoint or 'unknown'
+        method = request.method
+
+        # Record request duration
+        metrics.histogram(
+            'api_request_duration_seconds',
+            duration,
+            labels={'endpoint': endpoint, 'method': method, 'status': str(response.status_code)},
+            description='HTTP request duration in seconds'
+        )
+
+        # Count requests
+        metrics.counter(
+            'api_requests_total',
+            1,
+            labels={'endpoint': endpoint, 'method': method, 'status': str(response.status_code)},
+            description='Total HTTP requests'
+        )
+
+    return response
 
 
 def search_pages_path(page_path):

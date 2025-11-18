@@ -16,6 +16,7 @@
 import json
 import os
 import threading
+import time
 from abc import ABC
 from urllib.parse import urljoin
 
@@ -29,6 +30,7 @@ from zhipuai import ZhipuAI
 
 from common.log_utils import log_exception
 from common.token_utils import num_tokens_from_string, truncate
+from common.metrics import Metrics
 from common import settings
 import logging
 import base64
@@ -82,6 +84,9 @@ class BuiltinEmbed(Base):
         self._max_tokens = BuiltinEmbed._max_tokens
 
     def encode(self, texts: list):
+        start_time = time.time()
+        metrics = Metrics.get_instance()
+
         batch_size = 16
         # TEI is able to auto truncate inputs according to https://github.com/huggingface/text-embeddings-inference.
         token_count = 0
@@ -93,6 +98,16 @@ class BuiltinEmbed(Base):
                 ress = embeddings
             else:
                 ress = np.concatenate((ress, embeddings), axis=0)
+
+        # Record embedding duration
+        duration = time.time() - start_time
+        metrics.histogram(
+            'embedding_duration_seconds',
+            duration,
+            labels={'model': self._model_name or 'builtin', 'batch_size': str(len(texts))},
+            description='Embedding generation duration in seconds'
+        )
+
         return ress, token_count
 
     def encode_queries(self, text: str):
@@ -109,6 +124,9 @@ class OpenAIEmbed(Base):
         self.model_name = model_name
 
     def encode(self, texts: list):
+        start_time = time.time()
+        metrics = Metrics.get_instance()
+
         # OpenAI requires batch size <=16
         batch_size = 16
         texts = [truncate(t, 8191) for t in texts]
@@ -121,6 +139,16 @@ class OpenAIEmbed(Base):
                 total_tokens += self.total_token_count(res)
             except Exception as _e:
                 log_exception(_e, res)
+
+        # Record embedding duration
+        duration = time.time() - start_time
+        metrics.histogram(
+            'embedding_duration_seconds',
+            duration,
+            labels={'model': self.model_name, 'batch_size': str(len(texts))},
+            description='Embedding generation duration in seconds'
+        )
+
         return np.array(ress), total_tokens
 
     def encode_queries(self, text):
