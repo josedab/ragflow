@@ -1,0 +1,43 @@
+RAGFlow Test Document
+
+This is a sample document used for testing the RAGFlow document processing pipeline.
+
+Section 1: Introduction
+
+RAGFlow is an open-source RAG (Retrieval-Augmented Generation) engine based on deep document understanding. It provides a streamlined RAG workflow for businesses of any scale, combining LLM (Large Language Models) to provide truthful question-answering capabilities.
+
+Section 2: Key Features
+
+- Deep document understanding: RAGFlow chunks documents based on deep layout understanding, not just simple text splitting
+- Template-based chunking: Different templates for various document types like QA, papers, manuals, etc.
+- Reduced hallucination: Grounded citations with visualized text chunking
+- Compatibility: Works with various heterogeneous data sources
+
+Section 3: Architecture
+
+The RAGFlow architecture consists of several key components:
+1. Document Processing Pipeline
+2. Vector Store Integration
+3. LLM Integration Layer
+4. API Server
+5. Web Frontend
+
+Section 4: Testing Information
+
+This document contains test content that should be chunked into multiple sections. The chunking algorithm should:
+- Respect section boundaries
+- Maintain semantic coherence
+- Handle different text lengths appropriately
+
+Table of Important Values:
+| Parameter | Value | Description |
+|-----------|-------|-------------|
+| chunk_size | 128 | Default chunk token size |
+| overlap | 0.1 | Overlap percentage |
+| min_tokens | 10 | Minimum tokens per chunk |
+
+Section 5: Conclusion
+
+This sample document demonstrates various text structures that the parsing and chunking systems need to handle correctly during testing.
+
+End of Document

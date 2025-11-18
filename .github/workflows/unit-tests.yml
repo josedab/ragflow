@@ -1,0 +1,92 @@
+name: unit-tests
+
+on:
+  push:
+    branches:
+      - 'main'
+      - '*.*.*'
+    paths:
+      - 'api/**'
+      - 'rag/**'
+      - 'deepdoc/**'
+      - 'agent/**'
+      - 'test/**'
+      - 'pyproject.toml'
+  pull_request:
+    paths:
+      - 'api/**'
+      - 'rag/**'
+      - 'deepdoc/**'
+      - 'agent/**'
+      - 'test/**'
+      - 'pyproject.toml'
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  unit-tests:
+    name: Unit Tests with Coverage
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Check out code
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.10'
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v3
+
+      - name: Install dependencies
+        run: |
+          uv sync --python 3.10 --group test --frozen
+
+      - name: Run unit tests with coverage
+        run: |
+          uv run pytest test/unit \
+            --cov=api \
+            --cov=rag \
+            --cov=deepdoc \
+            --cov=agent \
+            --cov-report=xml \
+            --cov-report=html \
+            --cov-report=term-missing \
+            -v \
+            --level=p2
+        env:
+          PYTHONPATH: ${{ github.workspace }}
+
+      - name: Upload coverage report
+        uses: actions/upload-artifact@v4
+        with:
+          name: coverage-report
+          path: |
+            coverage.xml
+            coverage_html/
+          retention-days: 7
+
+      - name: Coverage Summary
+        if: always()
+        run: |
+          echo "## Coverage Report" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          if [ -f coverage.xml ]; then
+            # Extract coverage percentage from XML
+            COVERAGE=$(python3 -c "import xml.etree.ElementTree as ET; tree = ET.parse('coverage.xml'); root = tree.getroot(); print(f\"{float(root.attrib['line-rate']) * 100:.1f}%\")")
+            echo "Overall line coverage: **${COVERAGE}**" >> $GITHUB_STEP_SUMMARY
+          else
+            echo "Coverage report not generated" >> $GITHUB_STEP_SUMMARY
+          fi
+
+      # Optional: Add coverage comment to PR
+      - name: Add Coverage PR Comment
+        uses: py-cov-action/python-coverage-comment-action@v3
+        if: github.event_name == 'pull_request'
+        with:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        continue-on-error: true

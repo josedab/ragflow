@@ -1,0 +1,42 @@
+{
+  "chat_responses": {
+    "simple_question": {
+      "response": "This is a simple test response from the LLM.",
+      "token_count": 12
+    },
+    "complex_question": {
+      "response": "Based on the context provided, the answer involves multiple considerations. First, we need to consider the main topic. Second, we should evaluate the supporting evidence. Finally, we can draw conclusions from the available data.",
+      "token_count": 45
+    },
+    "error_response": {
+      "error": "API rate limit exceeded",
+      "error_code": "rate_limit_error"
+    }
+  },
+  "embedding_responses": {
+    "single_text": {
+      "dimension": 384,
+      "token_count": 8
+    },
+    "batch_texts": {
+      "dimension": 384,
+      "batch_size": 10,
+      "token_count": 80
+    }
+  },
+  "rerank_responses": {
+    "simple_rerank": {
+      "scores": [0.95, 0.82, 0.71, 0.45, 0.23],
+      "token_count": 25
+    }
+  },
+  "streaming_responses": {
+    "simple_stream": [
+      {"text": "This ", "token_count": 1},
+      {"text": "is ", "token_count": 1},
+      {"text": "a ", "token_count": 1},
+      {"text": "streaming ", "token_count": 1},
+      {"text": "response.", "token_count": 2}
+    ]
+  }
+}
