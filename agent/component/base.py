@@ -16,16 +16,275 @@
 
 import re
 import time
-from abc import ABC
+from abc import ABC, abstractmethod
 import builtins
 import json
 import os
 import logging
-from typing import Any, List, Union
+import warnings
+from typing import Any, Dict, List, Optional, Union, Type
 import pandas as pd
 import trio
+from pydantic import BaseModel, Field, ConfigDict
 from agent import settings
 from common.connection_utils import timeout
+
+
+# =============================================================================
+# New Standardized Component Interface (RFC-0004)
+# =============================================================================
+
+class ComponentInput(BaseModel):
+    """Base class for component inputs with Pydantic validation."""
+    model_config = ConfigDict(extra='allow')
+
+
+class ComponentOutput(BaseModel):
+    """Base class for component outputs with Pydantic validation."""
+    model_config = ConfigDict(extra='allow')
+
+
+class ComponentConfig(BaseModel):
+    """Component configuration schema with Pydantic validation."""
+    model_config = ConfigDict(extra='allow')
+
+    # Common configuration options available to all components
+    description: str = Field(default="", description="Component description")
+    max_retries: int = Field(default=0, ge=0, description="Maximum retry attempts")
+    delay_after_error: float = Field(default=2.0, ge=0, description="Delay after error in seconds")
+    exception_method: Optional[str] = Field(default=None, description="Exception handling method")
+    exception_default_value: Optional[str] = Field(default=None, description="Default value on exception")
+    exception_goto: Optional[str] = Field(default=None, description="Component to go to on exception")
+
+
+class StandardizedComponentBase(ABC):
+    """
+    Standardized component base class with typed inputs/outputs.
+
+    This is the new interface for components (RFC-0004). It provides:
+    - Pydantic-validated inputs and outputs
+    - JSON schema generation for UI
+    - Plugin system support
+
+    Example usage:
+
+        class MyInput(ComponentInput):
+            text: str = Field(..., min_length=1)
+
+        class MyOutput(ComponentOutput):
+            result: str
+            confidence: float
+
+        class MyConfig(ComponentConfig):
+            model_id: str
+
+        class MyComponent(StandardizedComponentBase):
+            component_name = "MyComponent"
+            component_version = "1.0.0"
+            component_description = "Processes text"
+
+            input_schema = MyInput
+            output_schema = MyOutput
+            config_schema = MyConfig
+
+            def run(self, inputs: MyInput) -> MyOutput:
+                result, conf = process(inputs.text)
+                return MyOutput(result=result, confidence=conf)
+    """
+
+    # Component metadata
+    component_name: str = "base"
+    component_version: str = "1.0.0"
+    component_description: str = ""
+
+    # Type definitions - subclasses should override these
+    input_schema: Type[ComponentInput] = ComponentInput
+    output_schema: Type[ComponentOutput] = ComponentOutput
+    config_schema: Type[ComponentConfig] = ComponentConfig
+
+    # Concurrency control
+    thread_limiter = trio.CapacityLimiter(int(os.environ.get('MAX_CONCURRENT_CHATS', 10)))
+
+    def __init__(self, canvas, component_id: str, params: dict):
+        """
+        Initialize the component.
+
+        Args:
+            canvas: The workflow canvas/graph
+            component_id: Unique identifier for this component instance
+            params: Configuration parameters dictionary
+        """
+        from agent.canvas import Graph
+        assert isinstance(canvas, Graph), "canvas must be an instance of Graph"
+
+        self._canvas = canvas
+        self._id = component_id
+        self.config = self.config_schema(**params)
+        self._output: Optional[ComponentOutput] = None
+        self._error: Optional[str] = None
+        self._created_time: Optional[float] = None
+        self._elapsed_time: Optional[float] = None
+
+    @abstractmethod
+    def run(self, inputs: ComponentInput) -> ComponentOutput:
+        """
+        Execute the component with typed inputs/outputs.
+
+        This is the main method to implement in subclasses.
+
+        Args:
+            inputs: Validated input data
+
+        Returns:
+            Validated output data
+        """
+        pass
+
+    def validate_inputs(self, inputs: dict) -> ComponentInput:
+        """
+        Validate and convert raw input dictionary to typed input.
+
+        Args:
+            inputs: Raw input dictionary
+
+        Returns:
+            Validated ComponentInput instance
+        """
+        return self.input_schema(**inputs)
+
+    def invoke(self, **kwargs) -> Dict[str, Any]:
+        """
+        Main entry point for component execution with error handling.
+
+        Args:
+            **kwargs: Input parameters
+
+        Returns:
+            Dictionary of output values
+        """
+        self._created_time = time.perf_counter()
+        self._error = None
+
+        try:
+            # Validate inputs
+            inputs = self.validate_inputs(kwargs)
+
+            # Run with retry logic
+            last_error = ""
+            for attempt in range(self.config.max_retries + 1):
+                if self.check_if_canceled("component processing"):
+                    return self.get_output_dict()
+
+                try:
+                    self._output = self.run(inputs)
+                    break
+                except Exception as e:
+                    last_error = str(e)
+                    logging.exception(f"Attempt {attempt + 1} failed: {e}")
+                    if attempt < self.config.max_retries:
+                        time.sleep(self.config.delay_after_error)
+            else:
+                # All retries failed
+                if self.config.exception_method == "comment" and self.config.exception_default_value:
+                    self._output = self.output_schema()
+                else:
+                    self._error = last_error
+
+        except Exception as e:
+            self._error = str(e)
+            logging.exception(e)
+
+        self._elapsed_time = time.perf_counter() - self._created_time
+        return self.get_output_dict()
+
+    def get_output(self) -> Optional[ComponentOutput]:
+        """Get the typed component output."""
+        return self._output
+
+    def get_output_dict(self) -> Dict[str, Any]:
+        """Get output as dictionary including metadata."""
+        result = {}
+
+        if self._output:
+            result = self._output.model_dump()
+
+        if self._error:
+            result["_ERROR"] = self._error
+        if self._created_time:
+            result["_created_time"] = self._created_time
+        if self._elapsed_time:
+            result["_elapsed_time"] = self._elapsed_time
+
+        return result
+
+    def is_canceled(self) -> bool:
+        """Check if the task has been canceled."""
+        return self._canvas.is_canceled()
+
+    def check_if_canceled(self, message: str = "") -> bool:
+        """
+        Check if task is canceled and log if so.
+
+        Args:
+            message: Context message for logging
+
+        Returns:
+            True if canceled, False otherwise
+        """
+        if self.is_canceled():
+            task_id = getattr(self._canvas, 'task_id', 'unknown')
+            log_message = f"Task {task_id} has been canceled"
+            if message:
+                log_message += f" during {message}"
+            logging.info(log_message)
+            self._error = "Task has been canceled"
+            return True
+        return False
+
+    def get_variable_value(self, expression: str) -> Any:
+        """
+        Get a variable value from the canvas.
+
+        Args:
+            expression: Variable reference expression (e.g., "component_id@output_name")
+
+        Returns:
+            The variable value
+        """
+        return self._canvas.get_variable_value(expression)
+
+    @classmethod
+    def get_schema(cls) -> dict:
+        """
+        Get component JSON schema for UI generation.
+
+        Returns:
+            Dictionary with component metadata and schemas
+        """
+        return {
+            "name": cls.component_name,
+            "version": cls.component_version,
+            "description": cls.component_description,
+            "inputs": cls.input_schema.model_json_schema(),
+            "outputs": cls.output_schema.model_json_schema(),
+            "config": cls.config_schema.model_json_schema(),
+        }
+
+    def thoughts(self) -> str:
+        """Return component's current thinking/status message."""
+        return f"{self.component_name} is processing..."
+
+    def __str__(self):
+        return json.dumps({
+            "component_name": self.component_name,
+            "version": self.component_version,
+            "config": self.config.model_dump() if self.config else {}
+        }, ensure_ascii=False)
+
+
+# =============================================================================
+# Legacy Component Interface (for backwards compatibility)
+# =============================================================================
 
 
 _FEEDED_DEPRECATED_PARAMS = "_feeded_deprecated_params"
