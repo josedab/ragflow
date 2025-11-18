@@ -59,12 +59,23 @@ class ReActMode(StrEnum):
     REACT = "react"
 
 
+class CapabilityError(Exception):
+    """Raised when a requested capability is not supported by the provider."""
+    pass
+
+
 ERROR_PREFIX = "**ERROR**"
 LENGTH_NOTIFICATION_CN = "······\n由于大模型的上下文窗口大小限制，回答已经被大模型截断。"
 LENGTH_NOTIFICATION_EN = "...\nThe answer is truncated by your chosen LLM due to its limitation on context length."
 
 
 class Base(ABC):
+    # Capability flags - override in subclasses
+    supports_json_mode: bool = False
+    supports_vision: bool = False
+    supports_function_calling: bool = False
+    supports_streaming: bool = True
+
     def __init__(self, key, model_name, base_url, **kwargs):
         timeout = int(os.environ.get("LM_TIMEOUT_SECONDS", 600))
         self.client = OpenAI(api_key=key, base_url=base_url, timeout=timeout)
@@ -76,6 +87,26 @@ class Base(ABC):
         self.is_tools = False
         self.tools = []
         self.toolcall_sessions = {}
+
+    def _has_images(self, messages):
+        """Check if messages contain images"""
+        for msg in messages:
+            content = msg.get('content')
+            if isinstance(content, list):
+                for item in content:
+                    if isinstance(item, dict) and item.get('type') == 'image_url':
+                        return True
+        return False
+
+    def _validate_capabilities(self, messages, gen_conf):
+        """Validate that requested capabilities are supported"""
+        # Check JSON mode
+        if gen_conf.get('response_format') == {'type': 'json_object'} and not self.supports_json_mode:
+            raise CapabilityError(f"{self.__class__.__name__} doesn't support JSON mode")
+
+        # Check vision
+        if self._has_images(messages) and not self.supports_vision:
+            raise CapabilityError(f"{self.__class__.__name__} doesn't support vision")
 
     def _get_delay(self):
         """Calculate retry delay time"""
@@ -323,6 +354,12 @@ class Base(ABC):
             history.insert(0, {"role": "system", "content": system})
         gen_conf = self._clean_conf(gen_conf)
 
+        # Validate capabilities before making the request
+        try:
+            self._validate_capabilities(history, gen_conf)
+        except CapabilityError as e:
+            return f"{ERROR_PREFIX}: {str(e)}", 0
+
         # Implement exponential backoff retry strategy
         for attempt in range(self.max_retries + 1):
             try:
@@ -506,6 +543,11 @@ class Base(ABC):
 
 class GptTurbo(Base):
     _FACTORY_NAME = "OpenAI"
+    # OpenAI supports all major capabilities
+    supports_json_mode = True
+    supports_vision = True
+    supports_function_calling = True
+    supports_streaming = True
 
     def __init__(self, key, model_name="gpt-3.5-turbo", base_url="https://api.openai.com/v1", **kwargs):
         if not base_url:
@@ -545,6 +587,11 @@ class ModelScopeChat(Base):
 
 class AzureChat(Base):
     _FACTORY_NAME = "Azure-OpenAI"
+    # Azure OpenAI supports same capabilities as OpenAI
+    supports_json_mode = True
+    supports_vision = True
+    supports_function_calling = True
+    supports_streaming = True
 
     def __init__(self, key, model_name, base_url, **kwargs):
         api_key = json.loads(key).get("api_key", "")
@@ -639,6 +686,11 @@ class BaiChuanChat(Base):
 
 class ZhipuChat(Base):
     _FACTORY_NAME = "ZHIPU-AI"
+    # ZhipuAI supports function calling and vision
+    supports_json_mode = False
+    supports_vision = True
+    supports_function_calling = True
+    supports_streaming = True
 
     def __init__(self, key, model_name="glm-3-turbo", base_url=None, **kwargs):
         super().__init__(key, model_name, base_url=base_url, **kwargs)
@@ -759,6 +811,11 @@ class LocalLLM(Base):
 
 class VolcEngineChat(Base):
     _FACTORY_NAME = "VolcEngine"
+    # VolcEngine supports function calling and JSON mode
+    supports_json_mode = True
+    supports_vision = True
+    supports_function_calling = True
+    supports_streaming = True
 
     def __init__(self, key, model_name, base_url="https://ark.cn-beijing.volces.com/api/v3", **kwargs):
         """
@@ -854,13 +911,18 @@ class MiniMaxChat(Base):
 
 class MistralChat(Base):
     _FACTORY_NAME = "Mistral"
+    # Mistral supports JSON mode and function calling
+    supports_json_mode = True
+    supports_vision = True
+    supports_function_calling = True
+    supports_streaming = True
 
     def __init__(self, key, model_name, base_url=None, **kwargs):
         super().__init__(key, model_name, base_url=base_url, **kwargs)
 
-        from mistralai.client import MistralClient
+        from mistralai import Mistral
 
-        self.client = MistralClient(api_key=key)
+        self.client = Mistral(api_key=key)
         self.model_name = model_name
 
     def _clean_conf(self, gen_conf):
@@ -871,7 +933,7 @@ class MistralChat(Base):
 
     def _chat(self, history, gen_conf={}, **kwargs):
         gen_conf = self._clean_conf(gen_conf)
-        response = self.client.chat(model=self.model_name, messages=history, **gen_conf)
+        response = self.client.chat.complete(model=self.model_name, messages=history, **gen_conf)
         ans = response.choices[0].message.content
         if response.choices[0].finish_reason == "length":
             if is_chinese(ans):
@@ -887,8 +949,9 @@ class MistralChat(Base):
         ans = ""
         total_tokens = 0
         try:
-            response = self.client.chat_stream(model=self.model_name, messages=history, **gen_conf, **kwargs)
-            for resp in response:
+            response = self.client.chat.stream(model=self.model_name, messages=history, **gen_conf)
+            for event in response:
+                resp = event.data
                 if not resp.choices or not resp.choices[0].delta.content:
                     continue
                 ans = resp.choices[0].delta.content
@@ -900,7 +963,7 @@ class MistralChat(Base):
                         ans += LENGTH_NOTIFICATION_EN
                 yield ans
 
-        except openai.APIError as e:
+        except Exception as e:
             yield ans + "\n**ERROR**: " + str(e)
 
         yield total_tokens
@@ -920,6 +983,11 @@ class LmStudioChat(Base):
 
 class OpenAI_APIChat(Base):
     _FACTORY_NAME = ["VLLM", "OpenAI-API-Compatible"]
+    # OpenAI-compatible APIs may support these capabilities depending on the backend
+    supports_json_mode = True
+    supports_vision = True
+    supports_function_calling = True
+    supports_streaming = True
 
     def __init__(self, key, model_name, base_url, **kwargs):
         if not base_url:
@@ -1128,6 +1196,11 @@ class BaiduYiyanChat(Base):
 
 class GoogleChat(Base):
     _FACTORY_NAME = "Google Cloud"
+    # Google Cloud supports vision for both Gemini and Claude models
+    supports_json_mode = True
+    supports_vision = True
+    supports_function_calling = True
+    supports_streaming = True
 
     def __init__(self, key, model_name, base_url=None, **kwargs):
         super().__init__(key, model_name, base_url=base_url, **kwargs)
@@ -1400,6 +1473,12 @@ class LiteLLMBase(ABC):
         "Jiekou.AI",
     ]
 
+    # Capability flags - most LiteLLM providers support these
+    supports_json_mode: bool = True
+    supports_vision: bool = True
+    supports_function_calling: bool = True
+    supports_streaming: bool = True
+
     def __init__(self, key, model_name, base_url=None, **kwargs):
         self.timeout = int(os.environ.get("LM_TIMEOUT_SECONDS", 600))
         self.provider = kwargs.get("provider", "")
@@ -1423,6 +1502,26 @@ class LiteLLMBase(ABC):
         elif self.provider == SupportedLiteLLMProvider.OpenRouter:
             self.api_key = json.loads(key).get("api_key", "")
             self.provider_order = json.loads(key).get("provider_order", "")
+
+    def _has_images(self, messages):
+        """Check if messages contain images"""
+        for msg in messages:
+            content = msg.get('content')
+            if isinstance(content, list):
+                for item in content:
+                    if isinstance(item, dict) and item.get('type') == 'image_url':
+                        return True
+        return False
+
+    def _validate_capabilities(self, messages, gen_conf):
+        """Validate that requested capabilities are supported"""
+        # Check JSON mode
+        if gen_conf.get('response_format') == {'type': 'json_object'} and not self.supports_json_mode:
+            raise CapabilityError(f"{self.__class__.__name__} doesn't support JSON mode")
+
+        # Check vision
+        if self._has_images(messages) and not self.supports_vision:
+            raise CapabilityError(f"{self.__class__.__name__} doesn't support vision")
 
     def _get_delay(self):
         """Calculate retry delay time"""
@@ -1707,6 +1806,12 @@ class LiteLLMBase(ABC):
         if system and history and history[0].get("role") != "system":
             history.insert(0, {"role": "system", "content": system})
         gen_conf = self._clean_conf(gen_conf)
+
+        # Validate capabilities before making the request
+        try:
+            self._validate_capabilities(history, gen_conf)
+        except CapabilityError as e:
+            return f"{ERROR_PREFIX}: {str(e)}", 0
 
         # Implement exponential backoff retry strategy
         for attempt in range(self.max_retries + 1):
