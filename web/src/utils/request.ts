@@ -24,6 +24,7 @@ export const RetcodeMessage = {
   410: i18n.t('message.410'),
   413: i18n.t('message.413'),
   422: i18n.t('message.422'),
+  429: i18n.t('message.429'),
   500: i18n.t('message.500'),
   502: i18n.t('message.502'),
   503: i18n.t('message.503'),
@@ -42,6 +43,7 @@ export type ResultCode =
   | 410
   | 413
   | 422
+  | 429
   | 500
   | 502
   | 503
@@ -99,7 +101,7 @@ request.interceptors.request.use((url: string, options: any) => {
 });
 
 request.interceptors.response.use(async (response: Response, options) => {
-  if (response?.status === 413 || response?.status === 504) {
+  if (response?.status === 413 || response?.status === 504 || response?.status === 429) {
     message.error(RetcodeMessage[response?.status as ResultCode]);
   }
 

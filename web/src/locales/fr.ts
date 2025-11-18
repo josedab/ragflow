@@ -674,6 +674,7 @@ export default {
       410: 'La ressource demandée a été définitivement supprimée et ne sera plus disponible.',
       413: 'La taille totale des fichiers téléversés d’un coup est trop grande.',
       422: "Une erreur de validation s'est produite lors de la création de l'objet.",
+      429: 'Trop de requêtes. Veuillez attendre avant de réessayer.',
       500: 'Erreur serveur, veuillez vérifier le serveur.',
       502: 'Erreur de passerelle.',
       503: 'Service indisponible, le serveur est temporairement surchargé ou en maintenance.',

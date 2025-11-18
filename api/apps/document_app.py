@@ -42,6 +42,7 @@ from api.utils.api_utils import (
     validate_request,
 )
 from api.utils.file_utils import filename_type, thumbnail
+from api.utils.rate_limiter import rate_limit_by_user
 from common.file_utils import get_project_base_directory
 from common.constants import RetCode, VALID_TASK_STATUS, ParserType, TaskStatus
 from api.utils.web_utils import CONTENT_TYPE_MAP, html2pdf, is_valid_url
@@ -52,6 +53,7 @@ from common import settings
 
 @manager.route("/upload", methods=["POST"])  # noqa: F821
 @login_required
+@rate_limit_by_user(limit=20, window=60, config_key="document_upload")
 @validate_request("kb_id")
 def upload():
     kb_id = request.form.get("kb_id")

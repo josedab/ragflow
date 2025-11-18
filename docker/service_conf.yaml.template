@@ -32,6 +32,22 @@ redis:
   db: 1
   password: '${REDIS_PASSWORD:-infini_rag_flow}'
   host: '${REDIS_HOST:-redis}:6379'
+rate_limits:
+  default:
+    limit: 100
+    window: 60
+  llm_completion:
+    limit: 60
+    window: 60
+  document_upload:
+    limit: 20
+    window: 60
+  search:
+    limit: 200
+    window: 60
+  tts:
+    limit: 30
+    window: 60
 user_default_llm:
   default_models:
     embedding_model:

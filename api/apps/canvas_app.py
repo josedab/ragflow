@@ -36,6 +36,7 @@ from api.db.services.user_canvas_version import UserCanvasVersionService
 from common.constants import RetCode
 from common.misc_utils import get_uuid
 from api.utils.api_utils import get_json_result, server_error_response, validate_request, get_data_error_result
+from api.utils.rate_limiter import rate_limit_by_user
 from agent.canvas import Canvas
 from peewee import MySQLDatabase, PostgresqlDatabase
 from api.db.db_models import APIToken, Task
@@ -129,6 +130,7 @@ def getsse(canvas_id):
 @manager.route('/completion', methods=['POST'])  # noqa: F821
 @validate_request("id")
 @login_required
+@rate_limit_by_user(limit=10, window=60, config_key="llm_completion")
 def run():
     req = request.json
     query = req.get("query", "")

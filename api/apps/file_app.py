@@ -33,12 +33,14 @@ from api.db.services import duplicate_name
 from api.db.services.file_service import FileService
 from api.utils.api_utils import get_json_result
 from api.utils.file_utils import filename_type
+from api.utils.rate_limiter import rate_limit_by_user
 from api.utils.web_utils import CONTENT_TYPE_MAP
 from common import settings
 
 
 @manager.route('/upload', methods=['POST'])  # noqa: F821
 @login_required
+@rate_limit_by_user(limit=20, window=60, config_key="document_upload")
 # @validate_request("parent_id")
 def upload():
     pf_id = request.form.get("parent_id")

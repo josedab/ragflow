@@ -53,6 +53,7 @@ class RetCode(IntEnum, CustomEnum):
     SERVER_ERROR = 500
     FORBIDDEN = 403
     NOT_FOUND = 404
+    RATE_LIMIT_EXCEEDED = 429
 
 
 class StatusEnum(Enum):

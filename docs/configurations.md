@@ -209,6 +209,30 @@ oauth:
 ```
 :::
 
+### `rate_limits`
+
+Rate limiting configuration to prevent API abuse and ensure fair usage across tenants.
+
+- `default`: Default rate limits applied to all endpoints without specific configuration.
+  - `limit`: Maximum number of requests allowed in the time window. Defaults to `100`.
+  - `window`: Time window in seconds. Defaults to `60`.
+- `llm_completion`: Rate limits for LLM completion endpoints (chat, completion, ask).
+  - `limit`: Maximum number of requests allowed. Defaults to `60`.
+  - `window`: Time window in seconds. Defaults to `60`.
+- `document_upload`: Rate limits for document upload endpoints.
+  - `limit`: Maximum number of uploads allowed. Defaults to `20`.
+  - `window`: Time window in seconds. Defaults to `60`.
+- `search`: Rate limits for search/retrieval endpoints.
+  - `limit`: Maximum number of searches allowed. Defaults to `200`.
+  - `window`: Time window in seconds. Defaults to `60`.
+- `tts`: Rate limits for text-to-speech endpoints.
+  - `limit`: Maximum number of TTS requests allowed. Defaults to `30`.
+  - `window`: Time window in seconds. Defaults to `60`.
+
+:::tip NOTE
+Rate limiting uses Redis for tracking request counts. When Redis is unavailable, rate limiting is bypassed to avoid blocking legitimate requests.
+:::
+
 ### `user_default_llm`
 
 The default LLM to use for a new RAGFlow user. It is disabled by default. To enable this feature, uncomment the corresponding lines in **service_conf.yaml.template**.

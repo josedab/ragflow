@@ -27,6 +27,7 @@ from api.db.services.search_service import SearchService
 from api.db.services.tenant_llm_service import TenantLLMService
 from api.db.services.user_service import TenantService, UserTenantService
 from api.utils.api_utils import get_data_error_result, get_json_result, server_error_response, validate_request
+from api.utils.rate_limiter import rate_limit_by_user
 from rag.prompts.template import load_prompt
 from rag.prompts.generator import chunks_format
 from common.constants import RetCode, LLMType
@@ -164,6 +165,7 @@ def list_conversation():
 
 @manager.route("/completion", methods=["POST"])  # noqa: F821
 @login_required
+@rate_limit_by_user(limit=60, window=60, config_key="llm_completion")
 @validate_request("conversation_id", "messages")
 def completion():
     req = request.json
@@ -250,6 +252,7 @@ def completion():
 
 @manager.route("/tts", methods=["POST"])  # noqa: F821
 @login_required
+@rate_limit_by_user(limit=30, window=60, config_key="tts")
 def tts():
     req = request.json
     text = req["text"]
@@ -332,6 +335,7 @@ def thumbup():
 
 @manager.route("/ask", methods=["POST"])  # noqa: F821
 @login_required
+@rate_limit_by_user(limit=60, window=60, config_key="llm_completion")
 @validate_request("question", "kb_ids")
 def ask_about():
     req = request.json
@@ -364,6 +368,7 @@ def ask_about():
 
 @manager.route("/mindmap", methods=["POST"])  # noqa: F821
 @login_required
+@rate_limit_by_user(limit=30, window=60, config_key="llm_completion")
 @validate_request("question", "kb_ids")
 def mindmap():
     req = request.json
@@ -382,6 +387,7 @@ def mindmap():
 
 @manager.route("/related_questions", methods=["POST"])  # noqa: F821
 @login_required
+@rate_limit_by_user(limit=60, window=60, config_key="llm_completion")
 @validate_request("question")
 def related_questions():
     req = request.json
