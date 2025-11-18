@@ -1,0 +1,82 @@
+%% RAGFlow Data Flow
+%% Commit: 341e5904c847948d13e339f7df6aacd67ab8b652
+
+sequenceDiagram
+    participant U as User
+    participant F as Frontend
+    participant A as API Server
+    participant S as Services
+    participant P as Parser
+    participant E as Embedding
+    participant ES as Elasticsearch
+    participant L as LLM
+
+    %% Document Upload Flow
+    rect rgb(240, 248, 255)
+        Note over U,ES: Document Upload & Processing
+        U->>F: Upload Document
+        F->>A: POST /api/v1/document/upload
+        A->>S: DocumentService.create()
+        S->>ES: Store metadata
+        A-->>F: {doc_id, status: pending}
+
+        Note over A,ES: Background Processing
+        A->>P: Parse document
+        P->>P: Layout recognition
+        P->>P: OCR if needed
+        P->>P: Table extraction
+        P-->>A: Sections
+
+        A->>A: Chunking
+        A->>E: Generate embeddings
+        E->>E: Batch encode
+        E-->>A: Vectors
+
+        A->>ES: Index chunks
+        A->>S: Update status: done
+    end
+
+    %% Chat Query Flow
+    rect rgb(255, 248, 240)
+        Note over U,L: Chat Query Flow
+        U->>F: Send message
+        F->>A: POST /api/v1/conversation/completion
+        A->>S: Get dialog config
+        A->>ES: Hybrid search
+        ES-->>A: Relevant chunks
+
+        alt Reranking enabled
+            A->>L: Rerank chunks
+            L-->>A: Ranked results
+        end
+
+        A->>L: Chat with context
+        L-->>A: Stream response
+        A-->>F: SSE tokens
+        F-->>U: Display response
+    end
+
+    %% Agent Workflow Flow
+    rect rgb(248, 255, 240)
+        Note over U,L: Agent Workflow Flow
+        U->>F: Run workflow
+        F->>A: POST /api/v1/canvas/run
+        A->>S: Load canvas DSL
+
+        loop For each component
+            A->>A: Resolve variables
+            alt LLM Component
+                A->>L: Chat request
+                L-->>A: Response
+            else Retrieval Component
+                A->>ES: Search
+                ES-->>A: Chunks
+            else Tool Component
+                A->>A: Execute tool
+            end
+            A-->>F: SSE node result
+        end
+
+        A-->>F: Workflow complete
+        F-->>U: Final output
+    end

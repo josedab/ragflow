@@ -1,0 +1,92 @@
+%% RAGFlow Architecture Overview
+%% Commit: 341e5904c847948d13e339f7df6aacd67ab8b652
+
+graph TB
+    subgraph Frontend["Frontend Layer"]
+        UI[React + UmiJS]
+        ZUSTAND[Zustand Store]
+        RQ[React Query]
+        CANVAS[XYFlow Canvas]
+    end
+
+    subgraph API["API Layer"]
+        FLASK[Flask Server]
+        KB[KB API]
+        DIALOG[Dialog API]
+        DOC[Document API]
+        AGENT[Canvas API]
+        FILE[File API]
+    end
+
+    subgraph Services["Service Layer"]
+        SVC[Service Classes]
+        ORM[Peewee ORM]
+        AUTH[Auth/Authz]
+    end
+
+    subgraph RAG["RAG Pipeline"]
+        PARSER[Document Parsers]
+        CHUNK[Chunking Engine]
+        EMBED[Embedding Models]
+        SEARCH[Hybrid Search]
+        RERANK[Reranking]
+    end
+
+    subgraph Agents["Agent System"]
+        COMP[Components]
+        TOOLS[External Tools]
+        GRAPH[GraphRAG]
+        EXEC[Workflow Executor]
+    end
+
+    subgraph LLM["LLM Integration"]
+        FACTORY[Model Factory]
+        PROVIDERS[50+ Providers]
+        STREAM[Streaming]
+    end
+
+    subgraph Data["Data Layer"]
+        MYSQL[(MySQL)]
+        ES[(Elasticsearch)]
+        REDIS[(Redis)]
+        MINIO[(MinIO)]
+    end
+
+    UI --> FLASK
+    ZUSTAND --> UI
+    RQ --> FLASK
+    CANVAS --> AGENT
+
+    FLASK --> KB
+    FLASK --> DIALOG
+    FLASK --> DOC
+    FLASK --> AGENT
+    FLASK --> FILE
+
+    KB --> SVC
+    DIALOG --> SVC
+    DOC --> SVC
+    AGENT --> SVC
+    SVC --> ORM
+    SVC --> AUTH
+
+    DOC --> PARSER
+    PARSER --> CHUNK
+    CHUNK --> EMBED
+    EMBED --> ES
+    SEARCH --> ES
+    SEARCH --> RERANK
+
+    AGENT --> COMP
+    AGENT --> TOOLS
+    COMP --> EXEC
+    GRAPH --> ES
+    GRAPH --> REDIS
+
+    DIALOG --> FACTORY
+    FACTORY --> PROVIDERS
+    PROVIDERS --> STREAM
+
+    ORM --> MYSQL
+    AUTH --> REDIS
+    FILE --> MINIO

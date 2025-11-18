@@ -1,0 +1,84 @@
+%% RAGFlow Component Architecture
+%% Commit: 341e5904c847948d13e339f7df6aacd67ab8b652
+
+graph LR
+    subgraph DocProcessing["Document Processing"]
+        PDF[PDF Parser]
+        DOCX[DOCX Parser]
+        EXCEL[Excel Parser]
+        HTML[HTML Parser]
+
+        OCR[OCR Engine]
+        LAYOUT[Layout Recognizer]
+        TABLE[Table Extractor]
+    end
+
+    subgraph Chunking["Chunking Strategies"]
+        NAIVE[Naive Merge]
+        HIER[Hierarchical]
+        TREE[Tree Merge]
+        QA[QA Extraction]
+    end
+
+    subgraph LLMLayer["LLM Providers"]
+        direction TB
+        OPENAI[OpenAI]
+        ANTHROPIC[Anthropic]
+        LITELLM[LiteLLM Proxy]
+
+        LITELLM --> GROQ[Groq]
+        LITELLM --> BEDROCK[Bedrock]
+        LITELLM --> OLLAMA[Ollama]
+        LITELLM --> MORE[26+ more]
+    end
+
+    subgraph EmbedLayer["Embedding Models"]
+        OPENAI_E[OpenAI Embed]
+        BUILTIN[Built-in Models]
+        JINA[Jina]
+        COHERE_E[Cohere]
+    end
+
+    subgraph AgentComponents["Agent Components"]
+        BEGIN[Begin]
+        LLM_C[LLM]
+        RETRIEVAL[Retrieval]
+        SWITCH[Switch]
+        CATEGORIZE[Categorize]
+        INVOKE[Invoke]
+        ITERATION[Iteration]
+    end
+
+    subgraph Tools["External Tools"]
+        TAVILY[Tavily Search]
+        WIKI[Wikipedia]
+        EXECSQL[ExecSQL]
+        GITHUB[GitHub]
+        EMAIL[Email]
+    end
+
+    PDF --> OCR
+    PDF --> LAYOUT
+    PDF --> TABLE
+
+    LAYOUT --> NAIVE
+    LAYOUT --> HIER
+    LAYOUT --> TREE
+
+    BEGIN --> LLM_C
+    BEGIN --> RETRIEVAL
+    LLM_C --> SWITCH
+    RETRIEVAL --> CATEGORIZE
+    SWITCH --> INVOKE
+    CATEGORIZE --> ITERATION
+
+    LLM_C --> OPENAI
+    LLM_C --> ANTHROPIC
+    LLM_C --> LITELLM
+
+    RETRIEVAL --> OPENAI_E
+    RETRIEVAL --> BUILTIN
+
+    INVOKE --> TAVILY
+    INVOKE --> WIKI
+    INVOKE --> EXECSQL
